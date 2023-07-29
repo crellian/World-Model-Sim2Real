@@ -13,6 +13,6 @@ for root, subdirs, files in os.walk(root_dir):
         img = np.expand_dims(img, axis=-1)
         imgs.append(img)
 
-reconstructed_model = models.load_model("cnn")
+reconstructed_model = models.load_model("../img2cmd_data/cnn")
 
 print(reconstructed_model.predict(np.array(imgs)))

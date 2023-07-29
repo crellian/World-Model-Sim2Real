@@ -11,7 +11,7 @@ from models import VAEBEV
 
 use_cuda = torch.cuda.is_available()
 device = torch.device(0 if use_cuda else "cpu")
-vae_model_path = "/lab/kiran/ckpts/pretrained/carla/BEV_VAE_CARLA_RANDOM_BEV_CARLA_STANDARD_0.01_0.95_256_64.pt"
+vae_model_path = "/lab/kiran/ckpts/pretrained/carla/BEV_VAE_CARLA_RANDOM_BEV_CARLA_STANDARD_0.01_0.01_256_64.pt"
 
 if __name__ == '__main__':
     vae = VAEBEV(channel_in=1, ch=16, z=32).to(device)
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     kmax = 10
 
     # dissimilarity would not be defined for a single cluster, thus, minimum number of clusters should be 2
-    k = 30
+    k = 10
     kmeans = KMeans(n_clusters = k).fit(latents)
     labels = kmeans.labels_
     centroids = kmeans.cluster_centers_

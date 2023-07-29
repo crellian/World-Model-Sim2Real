@@ -81,10 +81,10 @@ model.compile(optimizer='adam',
 train_gen = DataGenerator(train_images, train_labels, 256)
 
 cp_callback = tf.keras.callbacks.ModelCheckpoint(
-              filepath='model',
+              filepath='../img2cmd_data/model',
                save_freq=10000,)
 
 history = model.fit(train_gen, epochs=100, workers=8, callbacks=[cp_callback])
 
-model.save('model/cnn', save_format='tf')
+model.save('../img2cmd_data/model/cnn', save_format='tf')
 

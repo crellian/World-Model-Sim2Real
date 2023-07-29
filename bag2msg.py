@@ -5,7 +5,7 @@ from carla_navigation.msg import TimedTwist
 import time
 
 rospy.init_node('pub', anonymous=True)
-bag = rosbag.Bag('bag/test_2023-07-26-02-37-22.bag')
+bag = rosbag.Bag('../img2cmd_data/bag/test_2023-07-26-02-37-22.bag')
 
 image_pub = rospy.Publisher('image', CompressedImage, queue_size=10)
 action_pub = rospy.Publisher('action', TimedTwist, queue_size=10)
