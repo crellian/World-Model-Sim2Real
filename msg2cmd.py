@@ -18,7 +18,7 @@ device = torch.device(0 if use_cuda else "cpu")
 
 vae_model_path = "/lab/kiran/ckpts/pretrained/carla/BEV_VAE_CARLA_RANDOM_BEV_CARLA_STANDARD_0.01_0.01_256_64.pt"
 lstm_model_path = "/lab/kiran/ckpts/pretrained/carla/BEV_LSTM_CARLA_RANDOM_BEV_CARLA_E2E_0.1_0.95_2_512.pt"
-cnn_model_path = "/lab/kiran/img2cmd_data/cnn"
+cnn_model_path = "/lab/kiran/img2cmd_data/model/cnn"
 
 
 action = None
@@ -50,7 +50,7 @@ def image_callback(img_msg):
     a = [action.twist.linear.x, action.twist.angular.y]
     z_pred = bev_lstm(torch.tensor([[a]]).to(device), z_prev)
 
-    r = torch.reshape(vae.recon(z_pred) * 255,  (64, 64)).cpu().numpy()
+    r = torch.reshape(vae.recon(z_prev) * 255,  (64, 64)).cpu().numpy()
 
 
     cv2.imshow("1.jpg", r)

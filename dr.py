@@ -15,7 +15,7 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 devices = tf.config.experimental.list_physical_devices('GPU')
 for device in devices:
     tf.config.experimental.set_memory_growth(device, True)
-tf.config.experimental.set_visible_devices(devices[1], 'GPU')
+tf.config.experimental.set_visible_devices(devices[0], 'GPU')
 
 import tensorflow_probability as tfp
 from tensorflow.keras.utils import Sequence
@@ -93,27 +93,21 @@ class DataGenerator(Sequence):
 class DRParameters:
     def __init__(self, hyper_params):
         self.hyper_params = hyper_params
-        with tf.variable_scope('brightness'):
-            self.brightness = tfp.distributions.Normal(
-                tf.Variable(self.hyper_params['brightness']['mu'], name='b_mu'),
-                tf.Variable(self.hyper_params['brightness']['sigma'], name='b_sigma')
-            )
-        with tf.variable_scope('contrast'):
-            self.contrast = tfp.distributions.Normal(
-                tf.Variable(self.hyper_params['contrast']['mu'], name='c_mu'),
-                tf.Variable(self.hyper_params['contrast']['sigma'], name='c_sigma'),
-            )
-        with tf.variable_scope('hue'):
-            self.hue = tfp.distributions.Normal(
-                tf.Variable(self.hyper_params['hue']['mu'], name='h_mu'),
-                tf.Variable(self.hyper_params['hue']['sigma'], name='h_sigma'),
-            )
+        self.brightness = tfp.distributions.Normal(
+            tf.Variable(self.hyper_params['brightness']['mu'], name='b_mu'),
+            tf.Variable(self.hyper_params['brightness']['sigma'], name='b_sigma')
+        )
+        self.contrast = tfp.distributions.Normal(
+            tf.Variable(self.hyper_params['contrast']['mu'], name='c_mu'),
+            tf.Variable(self.hyper_params['contrast']['sigma'], name='c_sigma'),
+        )
+        self.hue = tfp.distributions.Normal(
+            tf.Variable(self.hyper_params['hue']['mu'], name='h_mu'),
+            tf.Variable(self.hyper_params['hue']['sigma'], name='h_sigma'),
+        )
 
-    def sample(self, session):
-        return session.run([self.brightness.sample(), self.contrast.sample(), self.hue.sample()])
-
-    def get_trainable_params(self, scope):
-        return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope)
+    def sample(self):
+        return [self.brightness.sample(), self.contrast.sample(), self.hue.sample()]
 
 
 class DomainRandomizer:
@@ -122,18 +116,18 @@ class DomainRandomizer:
         self.init_cnn()
         self.params = DRParameters(self.hyper_params['dr'])
         self.trainable_params = {
-            'b': self.params.get_trainable_params('brightness'),
-            'c': self.params.get_trainable_params('contrast'),
-            'h': self.params.get_trainable_params('hue'),
+            'b': self.params.brightness.trainable_variables,
+            'c': self.params.contrast.trainable_variables,
+            'h': self.params.hue.trainable_variables,
         }
         self.best_eval_loss = np.inf
         self.epochs = self.hyper_params['dr']['epochs']
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.hyper_params['dr']['learning_rate'],
+        self.optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=self.hyper_params['dr']['learning_rate'],
                                                 name='dr_optimizer')
+
         self.optimizer.apply_gradients(zip([0.0, 0.0], self.trainable_params['b']))
         self.optimizer.apply_gradients(zip([0.0, 0.0], self.trainable_params['c']))
         self.optimizer.apply_gradients(zip([0.0, 0.0], self.trainable_params['h']))
-        self.init_ppo()
 
     def init_dataset(self, root_dir, in_source_domain=True):
         images = []
@@ -180,23 +174,6 @@ class DomainRandomizer:
                          loss="sparse_categorical_crossentropy",
                          metrics=['accuracy'])
 
-    def init_ppo(self):
-        self.input_shape = np.array([self.vae.z_dim + len(self.measurements)]) if self.vae else np.array(
-            [1280 + len(self.measurements)])
-        self.model = PPO(
-            self.input_shape, self.action_space,
-            learning_rate=self.hyper_params['model']['ppo']['learning_rate'],
-            lr_decay=self.hyper_params['model']['ppo']['lr_decay'],
-            epsilon=self.hyper_params['model']['ppo']['epsilon'],
-            initial_std=self.hyper_params['model']['ppo']['initial_std'],
-            value_scale=self.hyper_params['model']['ppo']['value_scale'],
-            entropy_scale=self.hyper_params['model']['ppo']['entropy_scale'],
-            model_dir=os.path.join('./models', self.hyper_params['model']['ppo']['model_name'])
-        )
-
-        self.model.init_session()
-        self.model.load_latest_checkpoint()
-
     def train(self, transform_params):
         # self.model.reset_episode_idx()
         epochs = self.hyper_params['model']['epochs']
@@ -206,14 +183,8 @@ class DomainRandomizer:
         images, labels = self.init_dataset("/home/tmp/kiran/random_bev_carla/rgb_bev")
         train_gen = DataGenerator(images, labels, batch_size, transform_params)
 
-        cp_callback = tf.keras.callbacks.ModelCheckpoint(
-            filepath='../img2cmd_data/model',
-            save_freq=10000, )
-
         # train model
-        history = self.cnn.fit(train_gen, epochs=epochs, workers=8, callbacks=[cp_callback])
-
-        self.cnn.save('../img2cmd_data/model/cnn', save_format='tf')
+        history = self.cnn.fit(train_gen, epochs=epochs, workers=8)
 
         return history['loss']
 
@@ -235,38 +206,32 @@ class DomainRandomizer:
         # self.model.sess.run(tf.variables_initializer(self.optimizer.variables()))
         for idx in range(self.epochs):
             print(f'DR Epoch {idx}')
-            transform_params = self.params.sample(self.model.sess)
-            print(transform_params)
+            transform_params = self.params.sample()
             print(self.train(transform_params))
             source_loss = self.eval(transform_params)
             target_loss = self.eval(transform_params, in_source_domain=False)
+            print("source_loss: ", source_loss)
+            print("target_loss: ", target_loss)
 
             if target_loss < self.best_eval_loss:
-                self.model.save()
+                print("Parameters update: ", transform_params)
+                self.cnn.save('../img2cmd_data/model/cnn', save_format='tf')
                 self.best_eval_loss = target_loss
 
             self.transfer_loss = (target_loss - source_loss)
-            bl = -tf.math.log(self.params.brightness.prob(transform_params[0]) * self.transfer_loss)
-            cl = -tf.math.log(self.params.contrast.prob(transform_params[1]) * self.transfer_loss)
-            hl = -tf.math.log(self.params.hue.prob(transform_params[2]) * self.transfer_loss)
 
-            bg = tf.gradients(bl, self.trainable_params['b'])
-            cg = tf.gradients(cl, self.trainable_params['c'])
-            hg = tf.gradients(hl, self.trainable_params['h'])
+            with tf.GradientTape() as tape:
+                bl = -tf.math.log(self.params.brightness.prob(transform_params[0]) * self.transfer_loss)
+                cl = -tf.math.log(self.params.contrast.prob(transform_params[1]) * self.transfer_loss)
+                hl = -tf.math.log(self.params.hue.prob(transform_params[2]) * self.transfer_loss)
 
-            self.model.sess.run([
-                self.optimizer.apply_gradients(zip(bg, self.trainable_params['b'])),
-                self.optimizer.apply_gradients(zip(cg, self.trainable_params['c'])),
-                self.optimizer.apply_gradients(zip(hg, self.trainable_params['h'])),
-            ])
+                bg = tape.gradients(bl, self.trainable_params['b'])
+                cg = tape.gradients(cl, self.trainable_params['c'])
+                hg = tape.gradients(hl, self.trainable_params['h'])
 
-        with open(os.path.join(self.model.model_dir, 'converged_params.txt'), 'w') as outfile:
-            outfile.write(
-                f'Brightness ~ Normal(mu={self.model.sess.run(self.params.brightness.loc)}, sigma={self.model.sess.run(self.params.brightness.scale)})\n')
-            outfile.write(
-                f'Contrast ~ Normal(mu={self.model.sess.run(self.params.contrast.loc)}, sigma={self.model.sess.run(self.params.contrast.scale)})\n')
-            outfile.write(
-                f'Hue ~ Normal(mu={self.model.sess.run(self.params.hue.loc)}, sigma={self.model.sess.run(self.params.hue.scale)})\n')
+            self.optimizer.apply_gradients(zip(bg, self.trainable_params['b'])),
+            self.optimizer.apply_gradients(zip(cg, self.trainable_params['c'])),
+            self.optimizer.apply_gradients(zip(hg, self.trainable_params['h'])),
 
         print('Done...')
 
