@@ -1,6 +1,6 @@
 import numpy as np
 import os
-
+import pickle
 import torch
 import cv2
 from sklearn.cluster import KMeans
@@ -57,11 +57,14 @@ if __name__ == '__main__':
     kmeans = KMeans(n_clusters = k).fit(latents)
     labels = kmeans.labels_
     centroids = kmeans.cluster_centers_
-
+    with open("kmeans.pkl", "wb") as f:
+            pickle.dump(kmeans, f)
+#with open("kmeans.pkl", "rb") as f:
+    #    kmeans = pickle.load(f)
     c_imgs = vae.recon(torch.tensor(centroids).to(device)) # center images
     for i, c in enumerate(c_imgs):
-      c = torch.permute(c, (1, 2, 0))
-      cv2.imwrite("centers/"+str(k)+"_"+str(i)+".jpg", c.cpu().numpy()*255)
+        c = torch.permute(c, (1, 2, 0))
+        cv2.imwrite("centers/"+str(k)+"_"+str(i)+".jpg", c.cpu().numpy()*255)
 
 
     #for i in range(10):
@@ -69,7 +72,7 @@ if __name__ == '__main__':
     j = 0
     for root, subdirs, files in os.walk(root_dir):
         for f in files:
-            if 'observation.npy' in f and 'rgb' not in f:
+            if 'observation.npy' in f:
                 latents = None
                 bevs = np.load(os.path.join(root, f))[:, :, :, 0]
                 bevs_c = np.expand_dims(bevs, axis=1)

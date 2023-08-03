@@ -21,7 +21,7 @@ vae.load_state_dict(vae_ckpt['model_state_dict'])
 
 div_val = 255.0
 for i in range(10):
-    img = cv2.imread("centers/10_" + str(i) + ".jpg", cv2.IMREAD_GRAYSCALE)
+    img = cv2.imread("manual_label/" + str(i) + ".jpg", cv2.IMREAD_GRAYSCALE)
     img = np.expand_dims(img, axis=(0, 1))
 
     image_val = torch.tensor(img).to(device) / div_val

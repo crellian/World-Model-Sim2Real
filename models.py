@@ -70,17 +70,29 @@ class VAEBEV(nn.Module):
         return self.recon(z), mu, logvar
 
 
-class BEVLSTM(nn.Module):
-    def __init__(self, latent_size, action_size, hidden_size, batch_size, num_layers, vae=None):
+class StateLSTM(nn.Module):
+    def __init__(self, latent_size, hidden_size, batch_size, num_layers, encoder):
         super().__init__()
-        self.vae = vae
-        self.lstm = nn.LSTM(latent_size + action_size, hidden_size, batch_first=True)
+        self.encoder = encoder
+        self.lstm = nn.LSTM(latent_size, hidden_size, batch_first=True)
         self.h_size = (num_layers, batch_size, hidden_size)
         self.init_hs()
 
     def init_hs(self):
         self.h_0 = Variable(torch.randn(self.h_size)).to(device)
         self.c_0 = Variable(torch.randn(self.h_size)).to(device)
+
+    def forward(self, img):
+        in_al = self.encoder(img)
+        outs, _ = self.lstm(in_al.float(), (self.h_0, self.c_0))
+        return outs
+
+
+class StateActionLSTM(StateLSTM):
+    def __init__(self, latent_size, action_size, hidden_size, batch_size, num_layers, encoder=None, vae=None):
+        super().__init__(latent_size=latent_size, hidden_size=hidden_size, batch_size=batch_size, num_layers=num_layers, encoder=encoder)
+        self.vae = vae
+        self.lstm = nn.LSTM(latent_size + action_size, hidden_size, batch_first=True)
 
     def encode(self, image):
         x = torch.reshape(image, (-1,) + image.shape[-3:])
@@ -98,3 +110,4 @@ class BEVLSTM(nn.Module):
         in_al = torch.cat([torch.Tensor(action), latent], dim=-1)
         outs, _ = self.lstm(in_al.float(), (self.h_0, self.c_0))
         return outs
+
